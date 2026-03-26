@@ -1,0 +1,7 @@
+[package]
+name = "swayty"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+swayipc = "4.0.0"
