@@ -26,12 +26,12 @@ fn window_breathing(ipc: &mut Connection) {
     loop {
         border_thickness = border_thickness + dir;
         counter += 1;
-        if counter % 6 == 0 {
-            dir *= -1
-        }
         _ = ipc.run_command(format!("border pixel {}", border_thickness));
         _ = ipc.run_command(format!("gaps outer current minus {}", dir));
         thread::sleep(time::Duration::from_millis(100));
+        if counter % 6 == 0 {
+            dir *= -1
+        }
         if counter % 12 == 0 {
             thread::sleep(time::Duration::from_secs(2));
         }
