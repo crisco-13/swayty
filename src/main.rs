@@ -1,11 +1,21 @@
 use std::{thread, time};
+use sysinfo::System;
 
 use swayipc::{Connection, Fallible};
 
 fn main() -> Fallible<()> {
     let mut ipc = Connection::new()?;
-    window_breathing(&mut ipc);
-    Ok(())
+    let mut sys = System::new();
+    loop {
+        sys.refresh_cpu_usage();
+        let cpus = sys.cpus();
+        let avg_cpu_usage: f32 =
+            cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32;
+        std::thread::sleep(time::Duration::from_secs(2));
+        while avg_cpu_usage > 50.0 {
+            window_breathing(&mut ipc);
+        }
+    }
 }
 
 fn window_breathing(ipc: &mut Connection) {
