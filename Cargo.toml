@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+regex = "1.12.3"
 swayipc = "4.0.0"
 sysinfo = "0.38.4"
