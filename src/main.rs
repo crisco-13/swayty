@@ -21,6 +21,9 @@ fn main() -> Fallible<()> {
         let (animation_speed, frecuency) = swaytiness_calculator(avg_cpu_usage);
 
         if animation_speed > 0 {
+            if let Some(focused_colors) = &client_focused_colors {
+                border_coloring(&mut ipc, avg_cpu_usage, focused_colors);
+            }
             window_breathing(&mut ipc, animation_speed);
         }
 
@@ -54,6 +57,32 @@ fn swaytiness_calculator(cpu_usage: f32) -> (u64, u64) {
         let loop_frecuency = 3900 - (38.0 * cpu_usage) as u64;
         (breathing_speed, loop_frecuency)
     }
+}
+
+#[derive(Debug)]
+struct SwayColor(String);
+
+impl SwayColor {
+    fn from_cpu_usage(cpu_usage: f32) -> Self {
+        if cpu_usage <= 50.0 {
+            let green = 255;
+            let red = (5.1 * cpu_usage) as u8;
+            SwayColor(format!("#{:02x}{:02x}00", red, green))
+        } else {
+            let green = (510.0 - 5.1 * cpu_usage) as u8;
+            let red = 255;
+            SwayColor(format!("#{:02x}{:02x}00", red, green))
+        }
+    }
+}
+
+fn border_coloring(ipc: &mut Connection, cpu_usage: f32, focused_colors: &FocusedColors) {
+    let border_color = SwayColor::from_cpu_usage(cpu_usage);
+
+    _ = ipc.run_command(format!(
+        "client.focused {}99 {}99 {} {}",
+        border_color.0, border_color.0, focused_colors.text, focused_colors.indicator
+    ));
 }
 
 #[derive(Debug, Clone)]
