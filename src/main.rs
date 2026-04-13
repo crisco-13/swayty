@@ -1,18 +1,28 @@
 use regex::Regex;
-use std::{collections::HashMap, thread, time};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread, time,
+};
 use sysinfo::System;
 
 use swayipc::{Connection, Fallible};
 
 fn main() -> Fallible<()> {
-    let mut ipc = Connection::new()?;
+    let ipc = Connection::new()?;
+    let ipc = Arc::new(Mutex::new(Some(ipc)));
+
+    let sway_config = fetch_sway_config(&ipc);
+    let client_focused_colors = sway_config.and_then(|s| get_client_focused_colors(&s));
+
     let mut sys = System::new();
 
-    let config = ipc.get_config()?;
+    let running = Arc::new(AtomicBool::new(true));
 
-    let client_focused_colors = get_client_focused_colors(&config.config);
-
-    loop {
+    while running.load(Ordering::SeqCst) {
         sys.refresh_cpu_usage();
         let cpus = sys.cpus();
         let avg_cpu_usage: f32 =
@@ -20,15 +30,22 @@ fn main() -> Fallible<()> {
 
         let (animation_speed, frecuency) = swaytiness_calculator(avg_cpu_usage);
 
-        if animation_speed > 0 {
-            if let Some(focused_colors) = &client_focused_colors {
-                border_coloring(&mut ipc, avg_cpu_usage, focused_colors);
+        if let Ok(mut guard) = ipc.lock() {
+            if let Some(conn) = guard.as_mut() {
+                if let Some(focused_colors) = &client_focused_colors {
+                    border_coloring(conn, avg_cpu_usage, focused_colors);
+                }
+
+                if animation_speed > 0 {
+                    window_breathing(conn, animation_speed);
+                }
             }
-            window_breathing(&mut ipc, animation_speed);
         }
 
         std::thread::sleep(time::Duration::from_millis(frecuency));
     }
+
+    Ok(())
 }
 
 fn window_breathing(ipc: &mut Connection, speed: u64) {
@@ -83,6 +100,12 @@ fn border_coloring(ipc: &mut Connection, cpu_usage: f32, focused_colors: &Focuse
         "client.focused {}99 {}99 {} {}",
         border_color.0, border_color.0, focused_colors.text, focused_colors.indicator
     ));
+}
+
+fn fetch_sway_config(ipc: &Arc<Mutex<Option<Connection>>>) -> Option<String> {
+    let mut guard = ipc.lock().ok()?;
+    let conn = guard.as_mut()?;
+    conn.get_config().ok().map(|c| c.config)
 }
 
 #[derive(Debug, Clone)]
