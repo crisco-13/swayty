@@ -20,7 +20,9 @@ fn main() -> Fallible<()> {
     let ipc = Arc::new(Mutex::new(Some(ipc)));
 
     let sway_config = fetch_sway_config(&ipc);
-    let client_focused_colors = sway_config.and_then(|s| get_client_focused_colors(&s));
+    let client_focused_colors = sway_config
+        .and_then(|s| get_client_focused_colors(&s))
+        .unwrap_or_else(|| FocusedColors::default());
 
     let mut sys = System::new();
 
@@ -48,9 +50,7 @@ fn main() -> Fallible<()> {
 
         if let Ok(mut guard) = ipc.lock() {
             if let Some(conn) = guard.as_mut() {
-                if let Some(focused_colors) = &client_focused_colors {
-                    border_coloring(conn, avg_cpu_usage, focused_colors);
-                }
+                border_coloring(conn, avg_cpu_usage, &client_focused_colors);
 
                 if animation_speed > 0 {
                     window_breathing(conn, animation_speed);
@@ -63,7 +63,7 @@ fn main() -> Fallible<()> {
 
     if let Ok(mut guard) = ipc.lock() {
         if let Some(mut conn) = guard.take() {
-            cleanup(&mut conn, client_focused_colors.as_ref());
+            cleanup(&mut conn, &client_focused_colors);
         }
     }
 
@@ -131,14 +131,25 @@ fn fetch_sway_config(ipc: &Arc<Mutex<Option<Connection>>>) -> Option<String> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FocusedColors {
-    pub border: String,
-    pub background: String,
-    pub text: String,
-    pub indicator: String,
+struct FocusedColors {
+    border: String,
+    background: String,
+    text: String,
+    indicator: String,
 }
 
-pub fn get_client_focused_colors(config: &str) -> Option<FocusedColors> {
+impl Default for FocusedColors {
+    fn default() -> Self {
+        FocusedColors {
+            border: "#4c7899".to_string(),
+            background: "#285577".to_string(),
+            text: "#ffffff".to_string(),
+            indicator: "#2e9ef4".to_string(),
+        }
+    }
+}
+
+fn get_client_focused_colors(config: &str) -> Option<FocusedColors> {
     let var_pattern = r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)";
     let var_regex = Regex::new(var_pattern).ok()?;
 
@@ -182,11 +193,12 @@ fn resolve_color(color_ref: &str, variables: &HashMap<String, String>) -> Option
     }
 }
 
-fn cleanup(ipc: &mut Connection, focused_colors: Option<&FocusedColors>) {
-    if let Some(colors) = focused_colors {
-        _ = ipc.run_command(format!(
-            "client.focused {} {} {} {}",
-            colors.border, colors.background, colors.text, colors.indicator
-        ));
-    }
+fn cleanup(ipc: &mut Connection, focused_colors: &FocusedColors) {
+    _ = ipc.run_command(format!(
+        "client.focused {} {} {} {}",
+        focused_colors.border,
+        focused_colors.background,
+        focused_colors.text,
+        focused_colors.indicator
+    ));
 }
