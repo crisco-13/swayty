@@ -1,4 +1,8 @@
 use regex::Regex;
+use signal_hook::{
+    consts::{SIGINT, SIGTERM},
+    iterator::Signals,
+};
 use std::{
     collections::HashMap,
     sync::{
@@ -22,6 +26,18 @@ fn main() -> Fallible<()> {
 
     let running = Arc::new(AtomicBool::new(true));
 
+    {
+        let running = running.clone();
+
+        let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
+        thread::spawn(move || {
+            for _sig in signals.forever() {
+                running.store(false, Ordering::SeqCst);
+                break;
+            }
+        });
+    }
+
     while running.load(Ordering::SeqCst) {
         sys.refresh_cpu_usage();
         let cpus = sys.cpus();
@@ -43,6 +59,12 @@ fn main() -> Fallible<()> {
         }
 
         std::thread::sleep(time::Duration::from_millis(frecuency));
+    }
+
+    if let Ok(mut guard) = ipc.lock() {
+        if let Some(mut conn) = guard.take() {
+            cleanup(&mut conn, client_focused_colors.as_ref());
+        }
     }
 
     Ok(())
@@ -157,5 +179,14 @@ fn resolve_color(color_ref: &str, variables: &HashMap<String, String>) -> Option
         Some(color_ref.to_string())
     } else {
         None
+    }
+}
+
+fn cleanup(ipc: &mut Connection, focused_colors: Option<&FocusedColors>) {
+    if let Some(colors) = focused_colors {
+        _ = ipc.run_command(format!(
+            "client.focused {} {} {} {}",
+            colors.border, colors.background, colors.text, colors.indicator
+        ));
     }
 }
