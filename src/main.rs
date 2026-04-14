@@ -117,6 +117,49 @@ impl SwayColor {
     }
 }
 
+#[derive(Debug)]
+enum SwayColorError {
+    InvalidFormat,
+    InvalidLength,
+    InvalidHexDigits,
+}
+
+impl TryFrom<&str> for SwayColor {
+    type Error = SwayColorError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if !value.starts_with('#') {
+            return Err(SwayColorError::InvalidFormat);
+        }
+
+        if value.len() != 7 || value.len() != 9 {
+            return Err(SwayColorError::InvalidLength);
+        }
+
+        if !value[1..].chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(SwayColorError::InvalidHexDigits);
+        }
+
+        Ok(SwayColor(value.to_string()))
+    }
+}
+
+impl TryFrom<String> for SwayColor {
+    type Error = SwayColorError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.as_str().try_into()
+    }
+}
+
+impl TryFrom<&String> for SwayColor {
+    type Error = SwayColorError;
+
+    fn try_from(value: &String) -> Result<Self, Self::Error> {
+        value.as_str().try_into()
+    }
+}
+
 fn border_coloring(ipc: &mut Connection, cpu_usage: f32, focused_colors: &FocusedColors) {
     let border_color = SwayColor::from_cpu_usage(cpu_usage);
 
