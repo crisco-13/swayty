@@ -20,13 +20,13 @@ fn main() -> Fallible<()> {
     let ipc = Arc::new(Mutex::new(Some(ipc)));
 
     let sway_config = fetch_sway_config(&ipc).expect("Sway config file not found");
-    let sway_config_variables = SwayConfigVariables::from_config(&sway_config)
-        .unwrap_or_else(|| SwayConfigVariables::new_empty());
+    let sway_config_variables =
+        SwayConfigVariables::from_config(&sway_config).unwrap_or(SwayConfigVariables::new_empty());
 
     let user_outer_gap = OuterGap::get_user_outer_gap(&sway_config).unwrap_or(OuterGap(0));
 
-    let client_focused_colors = get_client_focused_colors(&sway_config, &sway_config_variables)
-        .unwrap_or_else(|| FocusedColors::default());
+    let client_focused_colors =
+        get_client_focused_colors(&sway_config, &sway_config_variables).unwrap_or_default();
 
     let mut sys = System::new();
 
@@ -35,11 +35,10 @@ fn main() -> Fallible<()> {
     {
         let running = running.clone();
 
-        let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
+        let mut signals = Signals::new([SIGINT, SIGTERM])?;
         thread::spawn(move || {
-            for _sig in signals.forever() {
+            if let Some(_sig) = signals.forever().next() {
                 running.store(false, Ordering::SeqCst);
-                break;
             }
         });
     }
@@ -52,23 +51,23 @@ fn main() -> Fallible<()> {
 
         let (animation_speed, frecuency) = swaytiness_calculator(avg_cpu_usage);
 
-        if let Ok(mut guard) = ipc.lock() {
-            if let Some(conn) = guard.as_mut() {
-                border_coloring(conn, avg_cpu_usage, &client_focused_colors);
+        if let Ok(mut guard) = ipc.lock()
+            && let Some(conn) = guard.as_mut()
+        {
+            border_coloring(conn, avg_cpu_usage, &client_focused_colors);
 
-                if animation_speed > 0 {
-                    window_breathing(conn, animation_speed);
-                }
+            if animation_speed > 0 {
+                window_breathing(conn, animation_speed);
             }
         }
 
         std::thread::sleep(time::Duration::from_millis(frecuency));
     }
 
-    if let Ok(mut guard) = ipc.lock() {
-        if let Some(mut conn) = guard.take() {
-            cleanup(&mut conn, &client_focused_colors, &user_outer_gap);
-        }
+    if let Ok(mut guard) = ipc.lock()
+        && let Some(mut conn) = guard.take()
+    {
+        cleanup(&mut conn, &client_focused_colors, &user_outer_gap);
     }
 
     Ok(())
@@ -121,9 +120,9 @@ impl SwayColor {
 
 #[derive(Debug)]
 enum SwayColorError {
-    InvalidFormat,
-    InvalidLength,
-    InvalidHexDigits,
+    Format,
+    Length,
+    HexDigits,
 }
 
 impl TryFrom<&str> for SwayColor {
@@ -131,15 +130,15 @@ impl TryFrom<&str> for SwayColor {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         if !value.starts_with('#') {
-            return Err(SwayColorError::InvalidFormat);
+            return Err(SwayColorError::Format);
         }
 
         if value.len() != 7 && value.len() != 9 {
-            return Err(SwayColorError::InvalidLength);
+            return Err(SwayColorError::Length);
         }
 
         if !value[1..].chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(SwayColorError::InvalidHexDigits);
+            return Err(SwayColorError::HexDigits);
         }
 
         Ok(SwayColor(value.to_string()))
@@ -174,7 +173,7 @@ fn border_coloring(ipc: &mut Connection, cpu_usage: f32, focused_colors: &Focuse
 fn fetch_sway_config(ipc: &Arc<Mutex<Option<Connection>>>) -> Option<swayipc::Config> {
     let mut guard = ipc.lock().ok()?;
     let conn = guard.as_mut()?;
-    conn.get_config().ok().map(|c| c)
+    conn.get_config().ok()
 }
 
 struct SwayConfigVariables(HashMap<String, String>);
@@ -231,10 +230,10 @@ fn get_client_focused_colors(
 
     let caps = client_regex.captures(&config.config)?;
 
-    let border = resolve_color(caps.get(1)?.as_str(), &variables)?;
-    let background = resolve_color(caps.get(2)?.as_str(), &variables)?;
-    let text = resolve_color(caps.get(3)?.as_str(), &variables)?;
-    let indicator = resolve_color(caps.get(4)?.as_str(), &variables)?;
+    let border = resolve_color(caps.get(1)?.as_str(), variables)?;
+    let background = resolve_color(caps.get(2)?.as_str(), variables)?;
+    let text = resolve_color(caps.get(3)?.as_str(), variables)?;
+    let indicator = resolve_color(caps.get(4)?.as_str(), variables)?;
 
     Some(FocusedColors {
         border,
@@ -245,8 +244,7 @@ fn get_client_focused_colors(
 }
 
 fn resolve_color(color_ref: &str, variables: &SwayConfigVariables) -> Option<SwayColor> {
-    if color_ref.starts_with('$') {
-        let var_name = &color_ref[1..];
+    if let Some(var_name) = color_ref.strip_prefix('$') {
         variables.0.get(var_name)?.try_into().ok()
     } else if color_ref.starts_with('#') {
         color_ref.try_into().ok()
