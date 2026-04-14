@@ -23,6 +23,8 @@ fn main() -> Fallible<()> {
     let sway_config_variables = SwayConfigVariables::from_config(&sway_config)
         .unwrap_or_else(|| SwayConfigVariables::new_empty());
 
+    let user_outer_gap = OuterGap::get_user_outer_gap(&sway_config).unwrap_or(OuterGap(0));
+
     let client_focused_colors = get_client_focused_colors(&sway_config, &sway_config_variables)
         .unwrap_or_else(|| FocusedColors::default());
 
@@ -65,7 +67,7 @@ fn main() -> Fallible<()> {
 
     if let Ok(mut guard) = ipc.lock() {
         if let Some(mut conn) = guard.take() {
-            cleanup(&mut conn, &client_focused_colors);
+            cleanup(&mut conn, &client_focused_colors, &user_outer_gap);
         }
     }
 
@@ -253,7 +255,23 @@ fn resolve_color(color_ref: &str, variables: &SwayConfigVariables) -> Option<Swa
     }
 }
 
-fn cleanup(ipc: &mut Connection, focused_colors: &FocusedColors) {
+#[derive(Debug)]
+struct OuterGap(u16);
+
+impl OuterGap {
+    fn get_user_outer_gap(config: &swayipc::Config) -> Option<OuterGap> {
+        let outer_gap_pattern = r"gaps\s+outer\s+(\d+)";
+        let outer_gap_regex = Regex::new(outer_gap_pattern).ok()?;
+
+        let caps = outer_gap_regex.captures(&config.config)?;
+
+        let gap_value = caps.get(1)?.as_str().parse::<u16>().ok()?;
+
+        Some(OuterGap(gap_value))
+    }
+}
+
+fn cleanup(ipc: &mut Connection, focused_colors: &FocusedColors, outer_gap: &OuterGap) {
     _ = ipc.run_command(format!(
         "client.focused {} {} {} {}",
         focused_colors.border.0,
@@ -261,4 +279,6 @@ fn cleanup(ipc: &mut Connection, focused_colors: &FocusedColors) {
         focused_colors.text.0,
         focused_colors.indicator.0,
     ));
+
+    _ = ipc.run_command(format!("gaps outer all set {}", outer_gap.0));
 }
