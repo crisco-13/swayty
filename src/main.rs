@@ -147,21 +147,6 @@ impl TryFrom<&str> for SwayColor {
     }
 }
 
-impl TryFrom<String> for SwayColor {
-    type Error = SwayColorError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value.as_str().try_into()
-    }
-}
-
-impl TryFrom<&String> for SwayColor {
-    type Error = SwayColorError;
-
-    fn try_from(value: &String) -> Result<Self, Self::Error> {
-        value.as_str().try_into()
-    }
-}
 fn border_coloring(
     ipc: &mut Connection,
     cpu_usage: f32,
@@ -252,7 +237,7 @@ fn get_client_focused_colors(
 
 fn resolve_color(color_ref: &str, variables: &SwayConfigVariables) -> Option<SwayColor> {
     if let Some(var_name) = color_ref.strip_prefix('$') {
-        variables.0.get(var_name)?.try_into().ok()
+        variables.0.get(var_name)?.as_str().try_into().ok()
     } else if color_ref.starts_with('#') {
         color_ref.try_into().ok()
     } else {
