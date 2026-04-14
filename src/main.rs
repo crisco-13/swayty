@@ -54,10 +54,10 @@ fn main() -> Fallible<()> {
         if let Ok(mut guard) = ipc.lock()
             && let Some(conn) = guard.as_mut()
         {
-            border_coloring(conn, avg_cpu_usage, &client_focused_colors);
+            border_coloring(conn, avg_cpu_usage, &client_focused_colors)?;
 
             if animation_speed > 0 {
-                window_breathing(conn, animation_speed);
+                window_breathing(conn, animation_speed)?;
             }
         }
 
@@ -67,13 +67,13 @@ fn main() -> Fallible<()> {
     if let Ok(mut guard) = ipc.lock()
         && let Some(mut conn) = guard.take()
     {
-        cleanup(&mut conn, &client_focused_colors, &user_outer_gap);
+        cleanup(&mut conn, &client_focused_colors, &user_outer_gap)?;
     }
 
     Ok(())
 }
 
-fn window_breathing(ipc: &mut Connection, speed: u64) {
+fn window_breathing(ipc: &mut Connection, speed: u64) -> Fallible<()> {
     let mut counter = 0;
     let mut dir = 2;
     let base_thickness = 5;
@@ -82,13 +82,15 @@ fn window_breathing(ipc: &mut Connection, speed: u64) {
     while counter < 12 {
         border_thickness = border_thickness + dir;
         counter += 1;
-        _ = ipc.run_command(format!("border pixel {}", border_thickness));
-        _ = ipc.run_command(format!("gaps outer current minus {}", dir));
+        ipc.run_command(format!("gaps outer current minus {}", dir))?;
+        ipc.run_command(format!("border pixel {}", border_thickness))?;
         thread::sleep(time::Duration::from_millis(speed));
         if counter % 6 == 0 {
             dir *= -1
         }
     }
+
+    Ok(())
 }
 
 fn swaytiness_calculator(cpu_usage: f32) -> (u64, u64) {
@@ -160,14 +162,19 @@ impl TryFrom<&String> for SwayColor {
         value.as_str().try_into()
     }
 }
-
-fn border_coloring(ipc: &mut Connection, cpu_usage: f32, focused_colors: &FocusedColors) {
+fn border_coloring(
+    ipc: &mut Connection,
+    cpu_usage: f32,
+    focused_colors: &FocusedColors,
+) -> Fallible<()> {
     let border_color = SwayColor::from_cpu_usage(cpu_usage);
 
-    _ = ipc.run_command(format!(
+    ipc.run_command(format!(
         "client.focused {}99 {}99 {} {}",
         border_color.0, border_color.0, focused_colors.text.0, focused_colors.indicator.0
-    ));
+    ))?;
+
+    Ok(())
 }
 
 fn fetch_sway_config(ipc: &Arc<Mutex<Option<Connection>>>) -> Option<swayipc::Config> {
@@ -269,14 +276,20 @@ impl OuterGap {
     }
 }
 
-fn cleanup(ipc: &mut Connection, focused_colors: &FocusedColors, outer_gap: &OuterGap) {
-    _ = ipc.run_command(format!(
+fn cleanup(
+    ipc: &mut Connection,
+    focused_colors: &FocusedColors,
+    outer_gap: &OuterGap,
+) -> Fallible<()> {
+    ipc.run_command(format!(
         "client.focused {} {} {} {}",
         focused_colors.border.0,
         focused_colors.background.0,
         focused_colors.text.0,
         focused_colors.indicator.0,
-    ));
+    ))?;
 
-    _ = ipc.run_command(format!("gaps outer all set {}", outer_gap.0));
+    ipc.run_command(format!("gaps outer all set {}", outer_gap.0))?;
+
+    Ok(())
 }
