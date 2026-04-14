@@ -100,7 +100,7 @@ fn swaytiness_calculator(cpu_usage: f32) -> (u64, u64) {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct SwayColor(String);
 
 impl SwayColor {
@@ -165,7 +165,7 @@ fn border_coloring(ipc: &mut Connection, cpu_usage: f32, focused_colors: &Focuse
 
     _ = ipc.run_command(format!(
         "client.focused {}99 {}99 {} {}",
-        border_color.0, border_color.0, focused_colors.text, focused_colors.indicator
+        border_color.0, border_color.0, focused_colors.text.0, focused_colors.indicator.0
     ));
 }
 
@@ -203,19 +203,19 @@ impl SwayConfigVariables {
 
 #[derive(Debug, Clone)]
 struct FocusedColors {
-    border: String,
-    background: String,
-    text: String,
-    indicator: String,
+    border: SwayColor,
+    background: SwayColor,
+    text: SwayColor,
+    indicator: SwayColor,
 }
 
 impl Default for FocusedColors {
     fn default() -> Self {
         FocusedColors {
-            border: "#4c7899".to_string(),
-            background: "#285577".to_string(),
-            text: "#ffffff".to_string(),
-            indicator: "#2e9ef4".to_string(),
+            border: "#4c7899".try_into().unwrap(),
+            background: "#285577".try_into().unwrap(),
+            text: "#ffffff".try_into().unwrap(),
+            indicator: "#2e9ef4".try_into().unwrap(),
         }
     }
 }
@@ -242,12 +242,12 @@ fn get_client_focused_colors(
     })
 }
 
-fn resolve_color(color_ref: &str, variables: &SwayConfigVariables) -> Option<String> {
+fn resolve_color(color_ref: &str, variables: &SwayConfigVariables) -> Option<SwayColor> {
     if color_ref.starts_with('$') {
         let var_name = &color_ref[1..];
-        variables.0.get(var_name).cloned()
-    } else if color_ref.starts_with('#') && (color_ref.len() == 7 || color_ref.len() == 9) {
-        Some(color_ref.to_string())
+        variables.0.get(var_name)?.try_into().ok()
+    } else if color_ref.starts_with('#') {
+        color_ref.try_into().ok()
     } else {
         None
     }
@@ -256,9 +256,9 @@ fn resolve_color(color_ref: &str, variables: &SwayConfigVariables) -> Option<Str
 fn cleanup(ipc: &mut Connection, focused_colors: &FocusedColors) {
     _ = ipc.run_command(format!(
         "client.focused {} {} {} {}",
-        focused_colors.border,
-        focused_colors.background,
-        focused_colors.text,
-        focused_colors.indicator
+        focused_colors.border.0,
+        focused_colors.background.0,
+        focused_colors.text.0,
+        focused_colors.indicator.0,
     ));
 }
