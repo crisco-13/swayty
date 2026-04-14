@@ -132,7 +132,7 @@ impl TryFrom<&str> for SwayColor {
             return Err(SwayColorError::InvalidFormat);
         }
 
-        if value.len() != 7 || value.len() != 9 {
+        if value.len() != 7 && value.len() != 9 {
             return Err(SwayColorError::InvalidLength);
         }
 
