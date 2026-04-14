@@ -49,7 +49,7 @@ fn main() -> Fallible<()> {
         let avg_cpu_usage: f32 =
             cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32;
 
-        let (animation_speed, frecuency) = swaytiness_calculator(avg_cpu_usage);
+        let (animation_speed, frequency) = swaytiness_calculator(avg_cpu_usage);
 
         if let Ok(mut guard) = ipc.lock()
             && let Some(conn) = guard.as_mut()
@@ -61,7 +61,7 @@ fn main() -> Fallible<()> {
             }
         }
 
-        std::thread::sleep(time::Duration::from_millis(frecuency));
+        std::thread::sleep(time::Duration::from_millis(frequency));
     }
 
     if let Ok(mut guard) = ipc.lock()
@@ -96,8 +96,8 @@ fn swaytiness_calculator(cpu_usage: f32) -> (u64, u64) {
         (0, 2000)
     } else {
         let breathing_speed = 150 - cpu_usage as u64;
-        let loop_frecuency = 3900 - (38.0 * cpu_usage) as u64;
-        (breathing_speed, loop_frecuency)
+        let loop_frequency = 3900 - (38.0 * cpu_usage) as u64;
+        (breathing_speed, loop_frequency)
     }
 }
 
