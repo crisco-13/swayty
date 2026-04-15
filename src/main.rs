@@ -30,10 +30,16 @@ fn main() -> Fallible<()> {
     let sway_config = fetch_sway_config(&ipc).expect("Sway config file not found");
     let sway_config_variables = SwayConfigVariables::from_config(&sway_config);
 
-    let user_outer_gap = OuterGap::get_user_outer_gap(&sway_config).unwrap_or(OuterGap(0));
+    let user_outer_gap = OuterGap::get_user_outer_gap(&sway_config).unwrap_or_else(|| {
+        eprintln!("Warning: could not parse user's default outer gap, defaulting to 0");
+        OuterGap(0)
+    });
 
     let client_focused_colors =
-        get_client_focused_colors(&sway_config, &sway_config_variables).unwrap_or_default();
+        get_client_focused_colors(&sway_config, &sway_config_variables).unwrap_or_else(|| {
+            eprintln!("Warning: could not parse user's default colors for focused windows, using sway's default values");
+            FocusedColors::default()
+        });
 
     let mut sys = System::new();
 
@@ -61,9 +67,11 @@ fn main() -> Fallible<()> {
         if let Ok(mut guard) = ipc.lock()
             && let Some(conn) = guard.as_mut()
         {
-            border_coloring(conn, avg_cpu_usage, &client_focused_colors)?;
+            border_coloring(conn, avg_cpu_usage, &client_focused_colors)
+                .inspect_err(|e| eprintln!("Error coloring border: {}", e))?;
 
-                window_breathing(conn, &user_outer_gap, animation_speed)?;
+            window_breathing(conn, &user_outer_gap, animation_speed)
+                .inspect_err(|e| eprintln!("Error resizing border/gap: {}", e))?;
         }
 
         std::thread::sleep(time::Duration::from_millis(frequency));
