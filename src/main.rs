@@ -57,7 +57,7 @@ fn main() -> Fallible<()> {
             border_coloring(conn, avg_cpu_usage, &client_focused_colors)?;
 
             if animation_speed > 0 {
-                window_breathing(conn, animation_speed)?;
+                window_breathing(conn, &user_outer_gap, animation_speed)?;
             }
         }
 
@@ -73,20 +73,30 @@ fn main() -> Fallible<()> {
     Ok(())
 }
 
-fn window_breathing(ipc: &mut Connection, speed: u64) -> Fallible<()> {
-    let mut counter = 0;
-    let mut dir = 2;
+fn window_breathing(ipc: &mut Connection, outer_gap: &OuterGap, speed: u64) -> Fallible<()> {
     let base_thickness = 5;
     let mut border_thickness = base_thickness;
+    let mut current_gap = outer_gap.0.max(6);
 
-    while counter < 12 {
-        border_thickness = border_thickness + dir;
-        counter += 1;
-        ipc.run_command(format!("gaps outer current minus {}", dir))?;
-        ipc.run_command(format!("border pixel {}", border_thickness))?;
-        thread::sleep(time::Duration::from_millis(speed));
-        if counter % 6 == 0 {
-            dir *= -1
+    let max_thickness = 11;
+    let min_gap = 0u16;
+
+    for breath_cycle in 0..2 {
+        let expanding = breath_cycle == 0;
+
+        for _step in 0..6 {
+            if expanding {
+                border_thickness = (border_thickness + 1).min(max_thickness);
+                current_gap = current_gap.saturating_sub(1).max(min_gap);
+                ipc.run_command(format!("gaps outer current set {}", current_gap))?;
+            } else {
+                border_thickness = (border_thickness - 1).max(base_thickness);
+                current_gap = current_gap.saturating_add(1);
+                ipc.run_command(format!("gaps outer current set {}", current_gap))?;
+            }
+
+            ipc.run_command(format!("border pixel {}", border_thickness))?;
+            thread::sleep(time::Duration::from_millis(speed));
         }
     }
 
@@ -94,7 +104,7 @@ fn window_breathing(ipc: &mut Connection, speed: u64) -> Fallible<()> {
 }
 
 fn swaytiness_calculator(cpu_usage: f32) -> (u64, u64) {
-    if cpu_usage < 20.0 {
+    if cpu_usage < 50.0 {
         (0, 2000)
     } else {
         let breathing_speed = 150 - cpu_usage as u64;
