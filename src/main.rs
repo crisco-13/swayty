@@ -7,7 +7,7 @@ use signal_hook::{
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
     thread, time,
@@ -24,10 +24,9 @@ lazy_static! {
 }
 
 fn main() -> Fallible<()> {
-    let ipc = Connection::new()?;
-    let ipc = Arc::new(Mutex::new(Some(ipc)));
+    let mut ipc = Connection::new()?;
 
-    let sway_config = fetch_sway_config(&ipc).expect("Sway config file not found");
+    let sway_config = ipc.get_config()?;
     let sway_config_variables = SwayConfigVariables::from_config(&sway_config);
 
     let user_outer_gap = OuterGap::get_user_outer_gap(&sway_config).unwrap_or_else(|| {
@@ -64,24 +63,16 @@ fn main() -> Fallible<()> {
 
         let (animation_speed, frequency) = swaytiness_calculator(avg_cpu_usage);
 
-        if let Ok(mut guard) = ipc.lock()
-            && let Some(conn) = guard.as_mut()
-        {
-            border_coloring(conn, avg_cpu_usage, &client_focused_colors)
-                .inspect_err(|e| eprintln!("Error coloring border: {}", e))?;
+        border_coloring(&mut ipc, avg_cpu_usage, &client_focused_colors)
+            .inspect_err(|e| eprintln!("Error coloring border: {}", e))?;
 
-            window_breathing(conn, &user_outer_gap, animation_speed)
-                .inspect_err(|e| eprintln!("Error resizing border/gap: {}", e))?;
-        }
+        window_breathing(&mut ipc, &user_outer_gap, animation_speed)
+            .inspect_err(|e| eprintln!("Error resizing border/gap: {}", e))?;
 
         std::thread::sleep(time::Duration::from_millis(frequency));
     }
 
-    if let Ok(mut guard) = ipc.lock()
-        && let Some(mut conn) = guard.take()
-    {
-        cleanup(&mut conn, &client_focused_colors, &user_outer_gap)?;
-    }
+    cleanup(&mut ipc, &client_focused_colors, &user_outer_gap)?;
 
     Ok(())
 }
@@ -188,12 +179,6 @@ fn border_coloring(
     ))?;
 
     Ok(())
-}
-
-fn fetch_sway_config(ipc: &Arc<Mutex<Option<Connection>>>) -> Option<swayipc::Config> {
-    let mut guard = ipc.lock().ok()?;
-    let conn = guard.as_mut()?;
-    conn.get_config().ok()
 }
 
 struct SwayConfigVariables(HashMap<String, String>);
