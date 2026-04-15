@@ -64,9 +64,7 @@ fn main() -> Fallible<()> {
         {
             border_coloring(conn, avg_cpu_usage, &client_focused_colors)?;
 
-            if animation_speed > 0 {
                 window_breathing(conn, &user_outer_gap, animation_speed)?;
-            }
         }
 
         std::thread::sleep(time::Duration::from_millis(frequency));
@@ -82,6 +80,10 @@ fn main() -> Fallible<()> {
 }
 
 fn window_breathing(ipc: &mut Connection, outer_gap: &OuterGap, speed: u64) -> Fallible<()> {
+    if speed == 0 {
+        return Ok(());
+    }
+
     let base_thickness = 5;
     let mut border_thickness = base_thickness;
     let mut current_gap = outer_gap.0.max(6);
@@ -115,8 +117,8 @@ fn swaytiness_calculator(cpu_usage: f32) -> (u64, u64) {
     if cpu_usage < 50.0 {
         (0, 2000)
     } else {
-        let breathing_speed = 150 - cpu_usage as u64;
-        let loop_frequency = 3900 - (38.0 * cpu_usage) as u64;
+        let breathing_speed = 150u64.saturating_sub(cpu_usage as u64);
+        let loop_frequency = 3900u64.saturating_sub((38.0 * cpu_usage) as u64);
         (breathing_speed, loop_frequency)
     }
 }
@@ -126,12 +128,13 @@ struct SwayColor(String);
 
 impl SwayColor {
     fn from_cpu_usage(cpu_usage: f32) -> Self {
+        let cpu_usage = cpu_usage.clamp(0.0, 100.0);
         if cpu_usage <= 50.0 {
             let green = 255;
             let red = (5.1 * cpu_usage) as u8;
             SwayColor(format!("#{:02x}{:02x}00", red, green))
         } else {
-            let green = (510.0 - 5.1 * cpu_usage) as u8;
+            let green = (5.1 * (100.0 - cpu_usage)) as u8;
             let red = 255;
             SwayColor(format!("#{:02x}{:02x}00", red, green))
         }
