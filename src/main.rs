@@ -28,8 +28,7 @@ fn main() -> Fallible<()> {
     let ipc = Arc::new(Mutex::new(Some(ipc)));
 
     let sway_config = fetch_sway_config(&ipc).expect("Sway config file not found");
-    let sway_config_variables =
-        SwayConfigVariables::from_config(&sway_config).unwrap_or(SwayConfigVariables::new_empty());
+    let sway_config_variables = SwayConfigVariables::from_config(&sway_config);
 
     let user_outer_gap = OuterGap::get_user_outer_gap(&sway_config).unwrap_or(OuterGap(0));
 
@@ -192,7 +191,7 @@ fn fetch_sway_config(ipc: &Arc<Mutex<Option<Connection>>>) -> Option<swayipc::Co
 struct SwayConfigVariables(HashMap<String, String>);
 
 impl SwayConfigVariables {
-    fn from_config(config: &swayipc::Config) -> Option<Self> {
+    fn from_config(config: &swayipc::Config) -> Self {
         let var_regex = &VAR_REGEX;
 
         let mut variables: HashMap<String, String> = HashMap::new();
@@ -206,11 +205,7 @@ impl SwayConfigVariables {
             }
         }
 
-        Some(SwayConfigVariables(variables))
-    }
-
-    fn new_empty() -> Self {
-        SwayConfigVariables(HashMap::new())
+        SwayConfigVariables(variables)
     }
 }
 
