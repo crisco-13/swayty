@@ -15,6 +15,15 @@ use sysinfo::System;
 
 use swayipc::{Connection, Fallible};
 
+const BASE_BORDER_THICKNESS: u16 = 5;
+const MAX_BORDER_THICKNESS: u16 = 11;
+const BREATHING_STEPS: u16 = 6;
+const BREATHING_CYCLES: u64 = 2;
+const BASE_BREATHING_SPEED: u64 = 150;
+const BASE_LOOP_FREQUENCY: u64 = 3900;
+const CPU_TO_FREQUENCY_RATIO: f32 = 38.0;
+const CPU_COLOR_SCALE: f32 = 255.0 / 50.0;
+
 static VAR_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)").unwrap());
 static CLIENT_REGEX: LazyLock<Regex> =
@@ -81,20 +90,19 @@ fn window_breathing(ipc: &mut Connection, outer_gap: &OuterGap, speed: u64) -> F
         return Ok(());
     }
 
-    let base_thickness = 5;
+    let base_thickness = BASE_BORDER_THICKNESS;
     let mut border_thickness = base_thickness;
-    let mut current_gap = outer_gap.0.max(6);
+    let mut current_gap = outer_gap.0.max(BREATHING_STEPS);
 
-    let max_thickness = 11;
-    let min_gap = 0u16;
+    let max_thickness = MAX_BORDER_THICKNESS;
 
-    for breath_cycle in 0..2 {
+    for breath_cycle in 0..BREATHING_CYCLES {
         let expanding = breath_cycle == 0;
 
-        for _step in 0..6 {
+        for _step in 0..BREATHING_STEPS {
             if expanding {
                 border_thickness = (border_thickness + 1).min(max_thickness);
-                current_gap = current_gap.saturating_sub(1).max(min_gap);
+                current_gap = current_gap.saturating_sub(1);
                 ipc.run_command(format!("gaps outer current set {}", current_gap))?;
             } else {
                 border_thickness = (border_thickness - 1).max(base_thickness);
@@ -114,8 +122,11 @@ fn swaytiness_calculator(cpu_usage: f32) -> (u64, u64) {
     if cpu_usage < 50.0 {
         (0, 2000)
     } else {
-        let breathing_speed = 150u64.saturating_sub(cpu_usage as u64);
-        let loop_frequency = 3900u64.saturating_sub((38.0 * cpu_usage) as u64);
+        let breathing_speed = BASE_BREATHING_SPEED
+            .saturating_sub(cpu_usage.round() as u64)
+            .max(50);
+        let loop_frequency = BASE_LOOP_FREQUENCY
+            .saturating_sub((CPU_TO_FREQUENCY_RATIO * cpu_usage).round().max(100.0) as u64);
         (breathing_speed, loop_frequency)
     }
 }
@@ -128,10 +139,10 @@ impl SwayColor {
         let cpu_usage = cpu_usage.clamp(0.0, 100.0);
         if cpu_usage <= 50.0 {
             let green = 255;
-            let red = (5.1 * cpu_usage) as u8;
+            let red = (CPU_COLOR_SCALE * cpu_usage).round() as u8;
             SwayColor(format!("#{:02x}{:02x}00", red, green))
         } else {
-            let green = (5.1 * (100.0 - cpu_usage)) as u8;
+            let green = (CPU_COLOR_SCALE * (100.0 - cpu_usage).round()) as u8;
             let red = 255;
             SwayColor(format!("#{:02x}{:02x}00", red, green))
         }
