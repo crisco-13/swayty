@@ -48,8 +48,6 @@ fn main() -> Fallible<()> {
             FocusedColors::default()
         });
 
-    let mut sys = System::new();
-
     let running = Arc::new(AtomicBool::new(true));
 
     {
@@ -62,6 +60,10 @@ fn main() -> Fallible<()> {
             }
         });
     }
+
+    let mut sys = System::new();
+    sys.refresh_cpu_usage();
+    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
 
     while running.load(Ordering::SeqCst) {
         sys.refresh_cpu_usage();
