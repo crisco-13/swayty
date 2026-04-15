@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use regex::Regex;
 use signal_hook::{
     consts::{SIGINT, SIGTERM},
@@ -14,6 +15,13 @@ use std::{
 use sysinfo::System;
 
 use swayipc::{Connection, Fallible};
+
+lazy_static! {
+    static ref VAR_REGEX: Regex = Regex::new(r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)").unwrap();
+    static ref CLIENT_REGEX: Regex =
+        Regex::new(r"client\.focused\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)").unwrap();
+    static ref OUTER_GAP_REGEX: Regex = Regex::new(r"gaps\s+outer\s+(\d+)").unwrap();
+}
 
 fn main() -> Fallible<()> {
     let ipc = Connection::new()?;
@@ -182,8 +190,7 @@ struct SwayConfigVariables(HashMap<String, String>);
 
 impl SwayConfigVariables {
     fn from_config(config: &swayipc::Config) -> Option<Self> {
-        let var_pattern = r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)";
-        let var_regex = Regex::new(var_pattern).ok()?;
+        let var_regex = &VAR_REGEX;
 
         let mut variables: HashMap<String, String> = HashMap::new();
 
@@ -227,8 +234,7 @@ fn get_client_focused_colors(
     config: &swayipc::Config,
     variables: &SwayConfigVariables,
 ) -> Option<FocusedColors> {
-    let client_pattern = r"client\.focused\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)";
-    let client_regex = Regex::new(client_pattern).ok()?;
+    let client_regex = &CLIENT_REGEX;
 
     let caps = client_regex.captures(&config.config)?;
 
@@ -260,8 +266,7 @@ struct OuterGap(u16);
 
 impl OuterGap {
     fn get_user_outer_gap(config: &swayipc::Config) -> Option<OuterGap> {
-        let outer_gap_pattern = r"gaps\s+outer\s+(\d+)";
-        let outer_gap_regex = Regex::new(outer_gap_pattern).ok()?;
+        let outer_gap_regex = &OUTER_GAP_REGEX;
 
         let caps = outer_gap_regex.captures(&config.config)?;
 
