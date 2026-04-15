@@ -1,4 +1,3 @@
-use lazy_static::lazy_static;
 use regex::Regex;
 use signal_hook::{
     consts::{SIGINT, SIGTERM},
@@ -7,7 +6,7 @@ use signal_hook::{
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicBool, Ordering},
     },
     thread, time,
@@ -16,12 +15,12 @@ use sysinfo::System;
 
 use swayipc::{Connection, Fallible};
 
-lazy_static! {
-    static ref VAR_REGEX: Regex = Regex::new(r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)").unwrap();
-    static ref CLIENT_REGEX: Regex =
-        Regex::new(r"client\.focused\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)").unwrap();
-    static ref OUTER_GAP_REGEX: Regex = Regex::new(r"gaps\s+outer\s+(\d+)").unwrap();
-}
+static VAR_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)").unwrap());
+static CLIENT_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"client\.focused\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)").unwrap());
+static OUTER_GAP_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"gaps\s+outer\s+(\d+)").unwrap());
 
 fn main() -> Fallible<()> {
     let mut ipc = Connection::new()?;
