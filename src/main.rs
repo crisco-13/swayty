@@ -15,9 +15,9 @@ use sysinfo::System;
 
 use swayipc::{Connection, Fallible};
 
-const BASE_BORDER_THICKNESS: u16 = 5;
-const MAX_BORDER_THICKNESS: u16 = 11;
-const BREATHING_STEPS: u16 = 6;
+const BASE_BORDER_THICKNESS: u16 = 12;
+const MIN_BORDER_THICKNESS: u16 = 5;
+const BREATHING_STEPS: u16 = 7;
 const BREATHING_CYCLES: u64 = 2;
 const BASE_BREATHING_SPEED: u64 = 150;
 const BASE_LOOP_FREQUENCY: u64 = 3900;
@@ -28,8 +28,8 @@ static VAR_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)").unwrap());
 static CLIENT_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"client\.focused\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)").unwrap());
-static OUTER_GAP_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"gaps\s+outer\s+(\d+)").unwrap());
+static INNER_GAP_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"gaps\s+inner\s+(\d+)").unwrap());
 
 fn main() -> Fallible<()> {
     let mut ipc = Connection::new()?;
@@ -37,9 +37,9 @@ fn main() -> Fallible<()> {
     let sway_config = ipc.get_config()?;
     let sway_config_variables = SwayConfigVariables::from_config(&sway_config);
 
-    let user_outer_gap = OuterGap::get_user_outer_gap(&sway_config).unwrap_or_else(|| {
-        eprintln!("Warning: could not parse user's default outer gap, defaulting to 0");
-        OuterGap(0)
+    let user_inner_gap = InnerGap::get_user_inner_gap(&sway_config).unwrap_or_else(|| {
+        eprintln!("Warning: could not parse user's default inner gap, defaulting to 0");
+        InnerGap(0)
     });
 
     let client_focused_colors =
@@ -76,40 +76,40 @@ fn main() -> Fallible<()> {
         border_coloring(&mut ipc, avg_cpu_usage, &client_focused_colors)
             .inspect_err(|e| eprintln!("Error coloring border: {}", e))?;
 
-        window_breathing(&mut ipc, &user_outer_gap, animation_speed)
+        window_breathing(&mut ipc, &user_inner_gap, animation_speed)
             .inspect_err(|e| eprintln!("Error resizing border/gap: {}", e))?;
 
         std::thread::sleep(time::Duration::from_millis(frequency));
     }
 
-    cleanup(&mut ipc, &client_focused_colors, &user_outer_gap)?;
+    cleanup(&mut ipc, &client_focused_colors, &user_inner_gap)?;
 
     Ok(())
 }
 
-fn window_breathing(ipc: &mut Connection, outer_gap: &OuterGap, speed: u64) -> Fallible<()> {
+fn window_breathing(ipc: &mut Connection, inner_gap: &InnerGap, speed: u64) -> Fallible<()> {
     if speed == 0 {
         return Ok(());
     }
 
     let base_thickness = BASE_BORDER_THICKNESS;
     let mut border_thickness = base_thickness;
-    let mut current_gap = outer_gap.0.max(BREATHING_STEPS);
+    let mut current_gap = inner_gap.0;
 
-    let max_thickness = MAX_BORDER_THICKNESS;
+    let min_thickness = MIN_BORDER_THICKNESS;
 
     for breath_cycle in 0..BREATHING_CYCLES {
-        let expanding = breath_cycle == 0;
+        let inhaling = breath_cycle == 0;
 
         for _step in 0..BREATHING_STEPS {
-            if expanding {
-                border_thickness = (border_thickness + 1).min(max_thickness);
-                current_gap = current_gap.saturating_sub(1);
-                ipc.run_command(format!("gaps outer current set {}", current_gap))?;
-            } else {
-                border_thickness = (border_thickness - 1).max(base_thickness);
+            if inhaling {
+                border_thickness = (border_thickness - 1).max(min_thickness);
                 current_gap = current_gap.saturating_add(1);
-                ipc.run_command(format!("gaps outer current set {}", current_gap))?;
+                ipc.run_command(format!("gaps inner current set {}", current_gap))?;
+            } else {
+                border_thickness = (border_thickness + 1).min(base_thickness);
+                current_gap = current_gap.saturating_sub(1);
+                ipc.run_command(format!("gaps inner current set {}", current_gap))?;
             }
 
             ipc.run_command(format!("border pixel {}", border_thickness))?;
@@ -265,24 +265,24 @@ fn resolve_color(color_ref: &str, variables: &SwayConfigVariables) -> Option<Swa
 }
 
 #[derive(Debug)]
-struct OuterGap(u16);
+struct InnerGap(u16);
 
-impl OuterGap {
-    fn get_user_outer_gap(config: &swayipc::Config) -> Option<OuterGap> {
-        let outer_gap_regex = &OUTER_GAP_REGEX;
+impl InnerGap {
+    fn get_user_inner_gap(config: &swayipc::Config) -> Option<InnerGap> {
+        let inner_gap_regex = &INNER_GAP_REGEX;
 
-        let caps = outer_gap_regex.captures(&config.config)?;
+        let caps = inner_gap_regex.captures(&config.config)?;
 
         let gap_value = caps.get(1)?.as_str().parse::<u16>().ok()?;
 
-        Some(OuterGap(gap_value))
+        Some(InnerGap(gap_value))
     }
 }
 
 fn cleanup(
     ipc: &mut Connection,
     focused_colors: &FocusedColors,
-    outer_gap: &OuterGap,
+    inner_gap: &InnerGap,
 ) -> Fallible<()> {
     ipc.run_command(format!(
         "client.focused {} {} {} {}",
@@ -292,7 +292,7 @@ fn cleanup(
         focused_colors.indicator.0,
     ))?;
 
-    ipc.run_command(format!("gaps outer all set {}", outer_gap.0))?;
+    ipc.run_command(format!("gaps inner all set {}", inner_gap.0))?;
 
     Ok(())
 }
