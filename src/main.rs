@@ -24,10 +24,20 @@ const BASE_LOOP_FREQUENCY: u64 = 3900;
 const CPU_TO_FREQUENCY_RATIO: f32 = 38.0;
 const CPU_COLOR_SCALE: f32 = 255.0 / 50.0;
 
+const DEFAULT_BORDER_COLOR: &str = "#4c7899";
+const DEFAULT_BACKGROUND_COLOR: &str = "#285577";
+const DEFAULT_TEXT_COLOR: &str = "#ffffff";
+const DEFAULT_INDICATOR_COLOR: &str = "#2e9ef4";
+const DEFAULT_CHILD_BORDER_COLOR: &str = "#285577";
+
 static VAR_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"set\s+\$([a-zA-Z_][a-zA-Z0-9_-]*)\s+(\S+)").unwrap());
-static CLIENT_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"client\.focused\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)").unwrap());
+static CLIENT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?m)(?i)^\s*client\.focused[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\S+)(?:[ \t]+(\S+))?(?:[ \t]+(\S+))?",
+    )
+    .unwrap()
+});
 static INNER_GAP_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"gaps\s+inner\s+(\d+)").unwrap());
 
@@ -185,10 +195,15 @@ fn border_coloring(
 ) -> Fallible<()> {
     let border_color = SwayColor::from_cpu_usage(cpu_usage);
 
-    ipc.run_command(format!(
-        "client.focused {}99 {}99 {} {}",
-        border_color.0, border_color.0, focused_colors.text.0, focused_colors.indicator.0
-    ))?;
+    let focused_colors = FocusedColors {
+        border: border_color.clone(),
+        background: focused_colors.background.clone(),
+        text: focused_colors.text.clone(),
+        indicator: focused_colors.indicator.clone(),
+        child_border: Some(border_color).clone(),
+    };
+
+    ipc.run_command(format!("client.focused {}", focused_colors))?;
 
     Ok(())
 }
@@ -219,17 +234,41 @@ struct FocusedColors {
     border: SwayColor,
     background: SwayColor,
     text: SwayColor,
-    indicator: SwayColor,
+    indicator: Option<SwayColor>,
+    child_border: Option<SwayColor>,
 }
 
 impl Default for FocusedColors {
     fn default() -> Self {
         FocusedColors {
-            border: "#4c7899".try_into().unwrap(),
-            background: "#285577".try_into().unwrap(),
-            text: "#ffffff".try_into().unwrap(),
-            indicator: "#2e9ef4".try_into().unwrap(),
+            border: DEFAULT_BORDER_COLOR.try_into().unwrap(),
+            background: DEFAULT_BACKGROUND_COLOR.try_into().unwrap(),
+            text: DEFAULT_TEXT_COLOR.try_into().unwrap(),
+            indicator: DEFAULT_INDICATOR_COLOR.try_into().ok(),
+            child_border: DEFAULT_CHILD_BORDER_COLOR.try_into().ok(),
         }
+    }
+}
+
+impl std::fmt::Display for FocusedColors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let indicator = if let Some(indicator) = self.indicator.clone() {
+            indicator.0
+        } else {
+            DEFAULT_INDICATOR_COLOR.to_string()
+        };
+
+        let child_border = if let Some(child_border) = self.child_border.clone() {
+            child_border.0
+        } else {
+            self.border.0.clone()
+        };
+
+        write!(
+            f,
+            "{} {} {} {} {}",
+            self.border.0, self.background.0, self.text.0, indicator, child_border
+        )
     }
 }
 
@@ -244,13 +283,23 @@ fn get_client_focused_colors(
     let border = resolve_color(caps.get(1)?.as_str(), variables)?;
     let background = resolve_color(caps.get(2)?.as_str(), variables)?;
     let text = resolve_color(caps.get(3)?.as_str(), variables)?;
-    let indicator = resolve_color(caps.get(4)?.as_str(), variables)?;
+    let indicator = if let Some(cap) = caps.get(4) {
+        resolve_color(cap.as_str(), variables)
+    } else {
+        None
+    };
+    let child_border = if let Some(cap) = caps.get(5) {
+        resolve_color(cap.as_str(), variables)
+    } else {
+        None
+    };
 
     Some(FocusedColors {
         border,
         background,
         text,
         indicator,
+        child_border,
     })
 }
 
@@ -284,13 +333,7 @@ fn cleanup(
     focused_colors: &FocusedColors,
     inner_gap: &InnerGap,
 ) -> Fallible<()> {
-    ipc.run_command(format!(
-        "client.focused {} {} {} {}",
-        focused_colors.border.0,
-        focused_colors.background.0,
-        focused_colors.text.0,
-        focused_colors.indicator.0,
-    ))?;
+    ipc.run_command(format!("client.focused {}", focused_colors))?;
 
     ipc.run_command(format!("gaps inner all set {}", inner_gap.0))?;
 
